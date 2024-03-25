@@ -1,0 +1,85 @@
+import sys
+import boto3
+import pandas as pd
+import datetime
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from awsglue.job import Job
+from awsglue.dynamicframe import DynamicFrame
+
+
+args = getResolvedOptions(sys.argv, ["JOB_NAME"])
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+job = Job(glueContext)
+job.init(args["JOB_NAME"], args)
+
+contactdf = spark.read.\
+           format("parquet").\
+           load("s3://axai//Analytics_Data_Lake/Salesforce_Data/Contacts"+"/*")
+
+      
+contactdf = contactdf.replace('None', None)
+ 
+contactdf.createOrReplaceTempView("contact_df") 
+contactdf = spark.sql("SELECT * FROM contact_df WHERE RecordTypeId = '01231000000xzc7AAA'")
+contactdf.createOrReplaceTempView("contact_df") 
+
+accountdf = spark.read.\
+           format("parquet").\
+           load("s3://axai//Analytics_Data_Lake/Salesforce_Data/Accounts"+"/*").select("Id", "Name", "Type", "Account_Type__c", "ShippingCity", "ShippingState",
+                    "ShippingPostalCode", "Account_Status__c", "ShippingStreet", "BillingCity",
+                    "BillingState", "BillingPostalCode", "BillingStreet")
+           
+accountdf = accountdf.replace('None', None)
+accountdf.createOrReplaceTempView("account_df")
+
+userdf = spark.read.\
+           format("parquet").\
+           load("s3://axai//Analytics_Data_Lake/Salesforce_Data/Users"+"/*").select('Id','Name',"Email")
+           
+userdf = userdf.replace('None', None)
+userdf.createOrReplaceTempView("user_df")
+
+opportunitydf = spark.read.\
+           format("parquet").\
+           load("s3://axai//Analytics_Data_Lake/Salesforce_Data/Opportunities"+"/*").select('Id','Name')
+           
+opportunitydf = opportunitydf.replace('None', None)
+opportunitydf.createOrReplaceTempView("opportunity_df")
+
+
+recordtypedf = spark.read.\
+           format("parquet").\
+           load("s3://axai//Analytics_Data_Lake/Salesforce_Data/RecordType"+"/*").select('Id','Name')
+           
+recordtypedf = recordtypedf.replace('None', None)
+recordtypedf.createOrReplaceTempView("recordtype_df")
+
+accdf_sql_query = "SELECT a.Id AS account_id,a.Name AS account_name,a.Type AS account_type,a.Account_Type__c AS account_group,a.ShippingCity AS shipping_city,a.ShippingState AS shipping_state,a.ShippingPostalCode AS shipping_postal_code,a.Account_Status__c AS account_status,a.ShippingStreet AS shipping_street,a.BillingCity AS billing_city,a.BillingState AS billing_state,a.BillingPostalCode AS billing_postal_code,a.BillingStreet AS billing_street,r.Name AS account_segmentation FROM account_df a LEFT JOIN recordtype_df r ON a.Id = r.Id"
+
+accdf = spark.sql(accdf_sql_query)
+accdf.createOrReplaceTempView("accDF")
+
+report_query="SELECT c.Id AS sf_id, c.Unique_ID__c AS unique_id,c.Email AS email,c.Actual_Go_Live_date__c AS actual_steady_state,c.Churn_Date__c AS churn_date,c.Specialty_Drop_Down__c AS specialty,c.Contact_Status__c AS customer_status,c.Clinical_Account_Manager__c AS cam_name_old,c.Site_Supervisor__c AS site_supervisor,c.Patients_Per_Day__c AS baseline_patients_per_day,c.Baseline_Scheduled_Patients_Per_Day__c AS baseline_scheduled_patient_per_day,c.Base_Monthly_Fee__c AS base_monthly_fee,c.Total_Monthly_Fee__c AS total_monthly_fee,c.Reimbursement_Per_Visit_MGMA__c AS reimbursement_rer_visit_mgma,c.Site__c AS enterprise_affiliation,c.Scribe_Partner__c AS scribe_partner_site,c.EHR_Name_Picklist__c AS ehr_name,c.Clinician_Time_Zone__c AS clinician_timezone,c.Current_FTE__c AS current_fte,c.FTE_Billing_Status__c AS fte_billing_status,c.Actual_Implementation_start_date__c AS actual_ramp_up_start,c.Estimated_Go_Live_date__c AS forecasted_steady_state,c.Estimated_Implementation_start_date__c AS forecasted_ramp_up_start,c.Planned_Go_Live_Date__c AS planned_steady_state,c.Planned_Implementation_Start_Date__c AS planned_ramp_up_start_date,c.Workflow_Call_Date__c AS workflow_call_date,c.Kick_Off_Call_Date__c AS kick_off_call,c.Primary_Reason_For_Delay__c AS imp_primary_cause_of_delay,c.Pre_Imp_Secondary_Cause_of_Delay__c AS imp_secondary_cause_of_delay,c.No_of_Shifts_to_Go_Live__c AS no_of_shifts_to_steady_state,c.Date_Clinician_Participation_Confirmed__c AS date_clinician_participation_confirmed,c.Primary_Implementation_Manager_Drop_Down__c AS primary_implementation_manager_old,c.Early_Go_Live__c AS early_steady_state,c.Date_contract_signed__c AS date_contract_signed,c.Churn_Type__c AS churn_type,c.Churn_Reason__c AS churn_reason,c.Adjusted_Baseline_Hours_Per_Month__c AS baseline_hours_per_month,c.On_Hold_Start_Date__c AS onhold_start_date,c.On_Hold_End_Date__c AS onhold_end_date,c.FTE_Status__c AS fte_status,c.PS_Assignment__c AS ps_assignment,c.Provider_Tier_Overall__c AS provider_tier_overall,c.Clinic_Days_Per_Week__c AS baseline_clinic_days_per_week,c.FTE__c AS baseline_provider_fte,c.Approval_Date__c AS approval_date,c.Approved_Chart_Prep_Time_mins__c AS approved_chart_prep_time_mins,c.Approved_Chart_Finish_Time_mins__c AS approved_chart_finish_time_mins,c.Imp_Primary_Cause_of_Delay__c AS rampup_primary_cause_of_delay,c.Imp_Secondary_Cause_of_Delay__c AS rampup_secondary_cause_of_delay,c.Transition_From__c AS transition_from,c.Transition_To__c AS transition_to,c.Forecasted_Pre_Transition_Start__c AS forecasted_pre_transition_start,c.Actual_Pre_Transition_Start__c AS actual_pre_transition_start,c.Forecasted_Transition_Start_Date__c AS forecasted_transition_start,c.Actual_Transition_Start_Date__c AS actual_transition_start,c.Forecasted_Transition_Completion_Date__c AS forecasted_transition_completion,c.Actual_Transition_Completion_Date__c AS actual_transition_completion,c.No_of_Shifts_to_Transition_Completion__c AS no_of_shifts_to_transition_completion,c.VIP_Customer__c AS vip_customer,c.Provider_s_Hardware_Status__c AS hardware_type,c.Multiplier_Effect__c AS multiplier_effect,c.Length_of_Workday_hours__c AS baseline_length_of_workday,c.Hours_Per_Week__c AS baseline_hours_per_week,c.Contract_Convention__c AS contract_convention,c.Standardization_Status__c AS standardization_status_planned,c.Standardization_Status_Current__c AS standardization_status_current,c.Standardization_Status_Explanation__c AS standardization_explanation,c.OpEx_Assignment__c AS op_ex_assignment_old,c.Pronunciation__c AS pronunciation,c.Gender__c AS gender,c.Preferred_Method_Of_Contact__c AS preferred_method_of_contact,c.Preferred_Name__c AS preferred_name,c.HomePhone AS home_phone,c.Phone AS business_phone,c.OtherPhone AS office_phone,c.MobilePhone AS mobile,c.Position__c AS position,c.Title AS job_title,c.Last_Active_Directory_Change_date__c AS last_active_directory_change_date,c.Service_Other_Notes__c AS other_notes,c.Best_time_for_weekly_call__c AS best_time_for_weekly_call,c.Birthdate AS birth_date,c.Primary_TAM__c AS primary_tam,c.Secondary_TAM__c AS secondary_tam,c.On_Site_Support_Member__c AS onsite_support_member,c.On_Hold_Explanation__c AS on_hold_explanation,c.Churn_Explanation__c AS churn_explanation,c.Streaming_2_0_Cleardata__c AS streaming_2_0_cleardata,c.Lenses__c AS lenses,c.Staffing_Reason__c AS staffing_reason,c.Staffing_Approval_Status__c AS staffing_approval_status,c.Shared_Plate__c AS shared_plate,c.Shared_Plate_User__c AS shared_plate_user,c.Day_1_Implementor_v2_drop_down__c AS day_1_implementor,c.Scribe_Location__c AS contracted_scribe_location,c.Additional_Hours_Fee__c AS additional_hours_fee,c.Additional_Services_Fee__c AS additional_services_fee,c.Prepayment__c AS pre_payment,c.Initiation_Fee_Type__c AS initiation_fee_type,c.Implementation_Fee__c AS implementation_fee,c.Deposit__c AS refundable_deposit,c.Discounting__c AS discounting,c.One_Time_Discount__c AS discount,c.Duration_Months_of_Discount__c AS duration_months_of_discount,c.Discount_on_Monthly_Rate__c AS monthly_rate_discount,c.Discount_Notes__c AS discount_notes,c.Billing_Terms__c AS billing_terms,c.Billing_Start_Date__c AS billing_start_date,c.Billing_End_Date__c AS billing_end_date,c.Paying__c AS paying,c.Billing_Notes__c AS billing_notes,c.Specialty_Type__c AS specialty_type,c.PO__c AS po,c.MailingStreet AS mailing_street,c.Technical_Notes__c AS technical_notes,c.AX_Notes_Included_Number_of_Notes__c AS included_notes,c.AX_Notes_Price_Per_Additional_Notes__c AS price_per_additional_notes,c.Augmedix_Product__c AS augmedix_product_type,c.Extended_Staffing__c AS staffing_needs,c.Provider_Tier_Change_Request__c AS provider_tier_change_request,c.Provider_Tier_Chge_Req_Effective_Date__c AS provider_tier_change_req_effective_date,c.Provider_Tier_Chge_Req_Approval_Date__c AS provider_tier_change_req_approval_date,c.Service_Credit_Request__c AS service_credit_request,c.Service_Credit_Request_Effective_Date__c AS service_credit_request_effective_date,c.Date_Demographics_Confirmed__c AS date_demographics_confirmed,c.Date_Scribe_Assigned__c AS date_scribe_assigned,c.WiFi_Audit_s_Start_Date__c AS wifi_audit_start_date,c.WiFi_Audit_s_End_Date__c AS wifi_audit_end_date,c.Last_Day_of_Revenue__c AS last_day_of_revenue,c.Minimum_Ramp_Up_Start__c AS first_ramp_up_start,c.Specialty_Category__c AS specialty_category,c.Mon_Cadence__c AS mon_cadence,c.Tue_Cadence__c AS tue_cadence,c.Wed_Cadence__c AS wed_cadence,c.Thu_Cadence__c AS thu_cadence,c.Fri_Cadence__c AS fri_cadence,c.Sat_Cadence__c AS sat_cadence,c.Sun_Cadence__c AS sun_cadence,c.Mon_Contracted_Clinic_Hours_c__c AS mon_contracted_clinic_hours,c.Tue_Contracted_Clinic_hours__c AS tue_contracted_clinic_hours,c.Wed_Contracted_Clinic_Hours__c AS wed_contracted_clinic_hours,c.Thu_Contracted_Clinic_Hours__c AS thu_contracted_clinic_hours,c.Fri_Contracted_Clinic_Hours__c AS fri_contracted_clinic_hours,c.Sat_Contracted_Clinic_Hours__c AS sat_contracted_clinic_hours,c.Sun_Contracted_Clinic_Hours__c AS sun_contracted_clinic_hours,c.On_Hold_Category__c AS on_hold_category,c.MDS_Manager__c AS mds_manager,c.Churn_Notification_Date__c AS churn_notification_date,c.HasOptedOutOfEmail AS email_opt_out_flag,c.Charged_on_hold_fee__c AS on_hold_fee_yn,c.Suffix AS credentials,c.Churn_reason_Level_2__c AS churn_reason_detail, a.*, o.Name AS opportunity, CASE WHEN c.FirstName IS NOT NULL AND LastName IS NOT NULL THEN TRIM(BOTH ',' FROM TRIM(lastname) || ', ' || TRIM(firstname)) ELSE '' END AS provider_full_name, account_name AS billable_account, CAST(c.CreatedDate AS DATE) AS contact_created_date, userdf_1.Name AS primary_implementation_manager, userdf_2.Name AS cam_name, userdf_2.Email AS cam_email, userdf_3.Name AS partner_performance_manager, userdf_4.Name AS op_ex_assignment, CASE WHEN c.Specialty_Drop_Down__c IN ('Internal Medicine', 'Primary Care', 'Family Practice') THEN 'Primary Care' WHEN c.Specialty_Drop_Down__c IS NULL THEN 'Unknown' WHEN c.Specialty_Drop_Down__c = 'Emergency Medicine' THEN 'ED' WHEN c.Specialty_Drop_Down__c = 'Palliative Care' THEN 'Palliative Care' WHEN c.Specialty_Drop_Down__c IN ('Radiology, Diagnostic') THEN 'Radiology' WHEN c.Specialty_Drop_Down__c IN ('Weight Loss','Nutritionist') THEN 'Weight Management' WHEN c.Specialty_Drop_Down__c = 'Gastroenterology' THEN 'GI' WHEN c.Specialty_Drop_Down__c IN ('Obstetrics and Gynecology (OB-GYN)','Gynecology', 'Gynecologic Oncology') THEN 'OB-GYN' WHEN c.Specialty_Drop_Down__c LIKE 'Women%' AND c.Specialty_Drop_Down__c LIKE '%Health' THEN 'OB-GYN' WHEN c.Specialty_Drop_Down__c IN ('Oncology', 'Radiation Oncology', 'Oncology, Surgical') THEN 'Oncology' WHEN c.Specialty_Drop_Down__c IN ('Other','Preventative Medicine','Digestive Disease', 'Infectious Diseases') THEN 'Other' WHEN c.Specialty_Drop_Down__c IN ('Podiatric Medicine (Podiatry)', 'Podiatric Medicine') THEN 'Podiatry' WHEN c.Specialty_Drop_Down__c IN ('Concierge Medicine', 'Family Practice','Internal Medicine','Primary Care','General Practice', 'Geriatric Medicine') THEN 'Primary Care' WHEN c.Specialty_Drop_Down__c = 'Physical Medicine and Rehabilitation' THEN 'Rehab' WHEN c.Specialty_Drop_Down__c IN ('Surgery, Vascular', 'Surgery, General') THEN 'Surgery, General' WHEN c.Specialty_Drop_Down__c IN ('Orthopedic Surgery', 'Surgery - Orthopedic Surgery', 'Surgery, Hand') THEN 'Surgery, Orthopedics' WHEN c.Specialty_Drop_Down__c IN ('Neurological Surgery', 'Surgery, Spine') THEN 'Surgery, Spine/Neuro' WHEN c.Specialty_Drop_Down__c IN ('Urology', 'Surgery, Urology') THEN 'Urology' WHEN c.Specialty_Drop_Down__c = 'Surgery, Thoracic' THEN 'Surgery, Thoracic  & Cardiovascular' WHEN c.Specialty_Drop_Down__c IN ( 'Cardiology','Dental','Dermatology','Hematology','Nephrology','Neurology','Pulmonology', 'Rheumatology','Sleep Medicine','Sports Medicine','Urgent Care','Urogynecology','Veterinary', 'Otorhinolaryngology (Ear, Nose & Throat)','Pain Management', 'Endocrinology and Metabolism','Allergy & Immunology','Pediatrics','Psychiatry','Plastic Surgery','Ophthalmology','Surgery, Colon and Rectal' ) THEN c.Specialty_Drop_Down__c ELSE 'Unknown' END AS specialty_consolidated,CASE WHEN c.Augmedix_Product__c IS NULL THEN 'Augmedix Live' ELSE c.Augmedix_Product__c END AS product_type, CASE WHEN c.Name IN ( 'Adventist Health Bakersfield (FKA San Joaquin Community Hospital)', 'Adventist Health Castle (FKA Castle Medical Center)', 'Adventist Health Clear Lake (FKA St Helena Hospital - Clear Lake)', 'Adventist Health Glendale (FKA Glendale Adventist Medical Center)', 'Adventist Health Hanford', 'Adventist Health Reedley', 'Adventist Health Sonora (FKA Sonora Regional Medical Center)', 'Adventist Health Tillamook' ) THEN 'EHR - Adventist Health' WHEN c.Name = 'Dignity Mark Twain Medical Center - Oncology' THEN 'EHR - Dignity Mark Twain Medical Center' WHEN c.Name = 'FirstHealth of The Carolinas - Seven Lakes' THEN 'EHR - FirstHealth of the Carolinas' WHEN c.Name = 'Kittitas Valley Healthcare - Ellensburg' THEN 'EHR - Kittitas Valley Healthcare' WHEN c.Name IN ( 'Sutter Gould Medical Foundation GI', 'Sutter SMF' ) THEN 'EHR - Sutter SGMF' WHEN c.Name IN ( 'Sutter SEBMF - 2500 Milvia St', 'Sutter SEBMF - 2850 Telegraph - Gastroenterology', 'Sutter SEBMF - Antioch Care Center - Family Medicine', 'Sutter SEBMF - Castro Valley - FM/IM', 'Sutter SEBMF - Castro Valley - OBGYN', 'Sutter SEBMF - Oakland - Surgical Oncology' ) THEN 'EHR - Sutter SEBMF' WHEN c.Name IN ( 'Dignity SF Orthopedics', 'Dignity Health San Francisco' ) THEN 'EHR - Dignity Health San Francisco' WHEN c.Name IS NULL THEN NULL ELSE CONCAT('EHR - ', c.Name) END AS sfdc_ehr_apps, CASE WHEN Contact_Status__c IN ('Ramp Up', 'Steady State') OR (Contact_Status__c IN ('On Hold: Ramp Up', 'On Hold: Steady State') AND (Charged_on_hold_fee__c = 'Yes' OR (Charged_on_hold_fee__c <> 'AX Quality / Service' AND On_Hold_End_Date__c IS NOT NULL))) THEN 1 ELSE 0 END AS cis_yn, userdf_5.Name AS enterprise_account_manager FROM contact_df c LEFT JOIN accDF a ON c.AccountId = a.account_id LEFT JOIN opportunity_df o ON c.Id = o.Id LEFT JOIN user_df userdf_1 ON c.Primary_Implementation_Consultant_Lookup__c = userdf_1.Id LEFT JOIN user_df userdf_2 ON c.Clinical_Account_Manager_Look_Up__c = userdf_2.Id LEFT JOIN user_df userdf_3 ON c.Partner_Performance_Manager_Lookup__c = userdf_3.Id LEFT JOIN user_df userdf_4 ON c.OpEx_Assignment_Look_Up__c = userdf_4.Id LEFT JOIN user_df userdf_5 ON c.Sales_Rep__c = userdf_5.Id"
+
+
+
+
+df_f = spark.sql(report_query)
+
+
+if df_f.count()>0:
+    df_f.write.mode("append") \
+        .format("jdbc") \
+        .option("url", "jdbc:sqlserver://axaidbinstance.ch2izlk4w3mm.us-west-1.rds.amazonaws.com:49670;databaseName=aug_bi_dw") \
+        .option("dbtable", "system_SFDC_Contacts_Test") \
+        .option("user", "etl_user") \
+        .option("password", "a&i@#pro$*2000@") \
+        .option("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver") \
+        .save()
+ 
+job.commit()
