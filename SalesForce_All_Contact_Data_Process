@@ -1,0 +1,60 @@
+import sys
+import pandas as pd
+import numpy as np
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from awsglue.job import Job
+from awsglue.dynamicframe import DynamicFrame
+from custom_module import SalesForceProcess 
+
+args = getResolvedOptions(sys.argv, ["JOB_NAME"])
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+job = Job(glueContext)
+job.init(args["JOB_NAME"], args)
+
+
+obj=SalesForceProcess.SalesForceProcess()
+
+df=obj.read_data(['Id','FirstName','LastName','Name','RecordTypeId','RecordTypeID__c','AccountId','Unique_ID__c','Email','Actual_Go_Live_date__c','Churn_Date__c','Specialty_Drop_Down__c','Contact_Status__c','Clinical_Account_Manager__c',
+    'Clinical_Account_Manager_Look_Up__c','Site_Supervisor__c','Patients_Per_Day__c','Baseline_Scheduled_Patients_Per_Day__c','Base_Monthly_Fee__c','Total_Monthly_Fee__c',
+    'Reimbursement_Per_Visit_MGMA__c','Site__c','Scribe_Partner__c','EHR_Name_Picklist__c','Clinician_Time_Zone__c','Current_FTE__c',
+    'FTE_Billing_Status__c','Actual_Implementation_start_date__c','Estimated_Go_Live_date__c','Estimated_Implementation_start_date__c','Planned_Go_Live_Date__c',
+    'Planned_Implementation_Start_Date__c','Workflow_Call_Date__c','Kick_Off_Call_Date__c','Primary_Reason_For_Delay__c','Pre_Imp_Secondary_Cause_of_Delay__c',
+    'No_of_Shifts_to_Go_Live__c','Date_Clinician_Participation_Confirmed__c','Primary_Implementation_Manager_Drop_Down__c','Primary_Implementation_Consultant_Lookup__c'
+    ,'Early_Go_Live__c','Date_contract_signed__c','Churn_Type__c','Churn_Reason__c','Adjusted_Baseline_Hours_Per_Month__c',
+    'On_Hold_Start_Date__c','On_Hold_End_Date__c','FTE_Status__c','PS_Assignment__c','Provider_Tier_Overall__c','Clinic_Days_Per_Week__c','FTE__c','Extended_Staffing__c',
+    'Approval_Date__c','Approved_Chart_Prep_Time_mins__c','Approved_Chart_Finish_Time_mins__c','Imp_Primary_Cause_of_Delay__c','Imp_Secondary_Cause_of_Delay__c',
+    'Transition_From__c','Transition_To__c','Forecasted_Pre_Transition_Start__c','Actual_Pre_Transition_Start__c','Forecasted_Transition_Start_Date__c',
+    'Actual_Transition_Start_Date__c','Forecasted_Transition_Completion_Date__c','Actual_Transition_Completion_Date__c','No_of_Shifts_to_Transition_Completion__c',
+    'VIP_Customer__c','Provider_s_Hardware_Status__c','Multiplier_Effect__c','Length_of_Workday_hours__c','Hours_Per_Week__c','Contract_Convention__c',
+    'Standardization_Status__c','Standardization_Status_Current__c','Standardization_Status_Explanation__c',
+    'OpEx_Assignment__c','OpEx_Assignment_Look_Up__c','Pronunciation__c','Gender__c','Preferred_Method_Of_Contact__c','Preferred_Name__c','HomePhone','Phone',
+    'OtherPhone','MobilePhone','Position__c','Title','Last_Active_Directory_Change_date__c','Service_Other_Notes__c','Best_time_for_weekly_call__c','Birthdate','Primary_TAM__c',
+    'Secondary_TAM__c','On_Site_Support_Member__c','On_Hold_Explanation__c','Churn_Explanation__c','Streaming_2_0_Cleardata__c','Lenses__c','Sales_Rep__c','Opportunity__c',
+    'Staffing_Reason__c','Staffing_Approval_Status__c','Shared_Plate__c','Shared_Plate_User__c','Day_1_Implementor_v2_drop_down__c','Scribe_Location__c','Additional_Hours_Fee__c',
+    'Additional_Services_Fee__c','Prepayment__c','Initiation_Fee_Type__c','Implementation_Fee__c','Deposit__c','Discounting__c','One_Time_Discount__c','Duration_Months_of_Discount__c',
+    'Discount_on_Monthly_Rate__c','Discount_Notes__c','Billing_Terms__c','Billing_Start_Date__c','Billing_End_Date__c','Paying__c','Billing_Notes__c','Specialty_Type__c','PO__c',
+    'MailingStreet','CreatedDate','Technical_Notes__c','AX_Notes_Included_Number_of_Notes__c','AX_Notes_Price_Per_Additional_Notes__c',
+    'Augmedix_Product__c','Provider_Tier_Change_Request__c','Provider_Tier_Chge_Req_Effective_Date__c','Provider_Tier_Chge_Req_Approval_Date__c','Service_Credit_Request__c',
+    'Service_Credit_Request_Effective_Date__c','Date_Demographics_Confirmed__c','Date_Scribe_Assigned__c',
+    'Partner_Performance_Manager_Lookup__c','WiFi_Audit_s_Start_Date__c','WiFi_Audit_s_End_Date__c','Last_Day_of_Revenue__c','Minimum_Ramp_Up_Start__c',
+    'Specialty_Category__c','Mon_Cadence__c','Tue_Cadence__c','Wed_Cadence__c','Thu_Cadence__c','Fri_Cadence__c','Sat_Cadence__c','Sun_Cadence__c',
+    'Mon_Contracted_Clinic_Hours_c__c','Tue_Contracted_Clinic_hours__c','Wed_Contracted_Clinic_Hours__c','Thu_Contracted_Clinic_Hours__c','Fri_Contracted_Clinic_Hours__c',
+    'Sat_Contracted_Clinic_Hours__c','Sun_Contracted_Clinic_Hours__c','On_Hold_Category__c','MDS_Manager__c','Churn_Notification_Date__c','HasOptedOutOfEmail',
+    'Charged_on_hold_fee__c','Suffix','Churn_reason_Level_2__c','Enterprise_Account__c'],"Contact")
+df=obj.filter_blanks(df,0,'all')
+df=obj.replace_none(df)
+
+df=df.astype(str)
+sparkDF=spark.createDataFrame(df) 
+
+sparkDF.write.\
+            format("parquet").\
+            mode("overwrite").\
+            save("s3://axai/Analytics_Data_Lake/Salesforce_Data/Contacts/")
+
+job.commit()
